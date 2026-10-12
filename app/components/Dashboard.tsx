@@ -59,39 +59,40 @@ export default function LawOfficeDashboard() {
 
   const loadClients = useCallback(async () => {
     if (!firmId) return
-    const { data: clientsData } = await supabase.from('clients').select('*').eq('firm_id', firmId).order('created_at', { ascending: false })
-    if (!clientsData) { setDbLoading(false); return }
+    try {
+      const { data: clientsData } = await supabase.from('clients').select('*').eq('firm_id', firmId).order('created_at', { ascending: false })
 
-    const enriched = await Promise.all(clientsData.map(async (c) => {
-      const { data: docs } = await supabase.from('documents').select('*').eq('client_id', c.id)
-      const { data: tasks } = await supabase.from('tasks').select('*').eq('client_id', c.id)
-      const { data: notes } = await supabase.from('notes').select('*').eq('client_id', c.id)
-      return {
-        ...c,
-        idNumber: c.id_number,
-        criticalDates: c.critical_dates,
-        feeModel: c.fee_model,
-        totalFee: c.total_fee,
-        paidSoFar: c.paid_so_far,
-        balanceDue: c.balance_due,
-        statusText: c.status === 'active' ? 'תיק פעיל' : c.status === 'completed' ? 'תיק הושלם' : 'בתהליכי הקמה',
-        documents: (docs || []).map(d => ({ name: d.name, date: d.uploaded_at, type: d.file_type, path: d.file_path, category: d.category || 'כללי' })),
-        tasks: (tasks || []).map(t => ({ id: t.id, title: t.title, dueDate: t.due_date, dueDateIso: t.due_date_iso, completed: t.completed, description: t.description, priority: t.priority || 'normal' })),
-        notes: (notes || []).map(n => {
-          const d = new Date(n.created_at)
-          const date = d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
-          return { id: n.id, date, author: n.author, text: n.text }
-        }),
-      }
-    }))
+      const enriched = await Promise.all((clientsData || []).map(async (c) => {
+        const { data: docs } = await supabase.from('documents').select('*').eq('client_id', c.id)
+        const { data: tasks } = await supabase.from('tasks').select('*').eq('client_id', c.id)
+        const { data: notes } = await supabase.from('notes').select('*').eq('client_id', c.id)
+        return {
+          ...c,
+          idNumber: c.id_number,
+          criticalDates: c.critical_dates,
+          feeModel: c.fee_model,
+          totalFee: c.total_fee,
+          paidSoFar: c.paid_so_far,
+          balanceDue: c.balance_due,
+          statusText: c.status === 'active' ? 'תיק פעיל' : c.status === 'completed' ? 'תיק הושלם' : 'בתהליכי הקמה',
+          documents: (docs || []).map(d => ({ name: d.name, date: d.uploaded_at, type: d.file_type, path: d.file_path, category: d.category || 'כללי' })),
+          tasks: (tasks || []).map(t => ({ id: t.id, title: t.title, dueDate: t.due_date, dueDateIso: t.due_date_iso, completed: t.completed, description: t.description, priority: t.priority || 'normal' })),
+          notes: (notes || []).map(n => {
+            const d = new Date(n.created_at)
+            const date = d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+            return { id: n.id, date, author: n.author, text: n.text }
+          }),
+        }
+      }))
 
-    // Load general tasks (not linked to any client)
-    const { data: genTasks } = await supabase.from('tasks').select('*').eq('firm_id', firmId).is('client_id', null).order('due_date_iso', { ascending: true })
-    setGeneralTasks((genTasks || []).map(t => ({ id: t.id, title: t.title, dueDate: t.due_date, dueDateIso: t.due_date_iso, completed: t.completed, description: t.description, priority: t.priority || 'normal' })))
+      const { data: genTasks } = await supabase.from('tasks').select('*').eq('firm_id', firmId).is('client_id', null).order('due_date_iso', { ascending: true })
+      setGeneralTasks((genTasks || []).map(t => ({ id: t.id, title: t.title, dueDate: t.due_date, dueDateIso: t.due_date_iso, completed: t.completed, description: t.description, priority: t.priority || 'normal' })))
 
-    setClients(enriched)
-    setDbLoading(false)
-  }, [])
+      setClients(enriched)
+    } finally {
+      setDbLoading(false)
+    }
+  }, [firmId])
 
   useEffect(() => {
     if (!firmId) return
