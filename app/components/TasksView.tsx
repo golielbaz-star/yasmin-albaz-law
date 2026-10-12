@@ -80,7 +80,7 @@ function TaskRow({ task, onToggle, onDelete, showDate = false }: {
   )
 }
 
-export default function TasksView() {
+export default function TasksView({ firmId }: { firmId: string | null }) {
   const [viewMode, setViewMode] = useState<ViewMode>('week')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [tasks, setTasks] = useState<any[]>([])
@@ -91,10 +91,12 @@ export default function TasksView() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    supabase.from('clients').select('id, name').order('name').then(({ data }) => setClients(data || []))
-  }, [])
+    if (!firmId) return
+    supabase.from('clients').select('id, name').eq('firm_id', firmId).order('name').then(({ data }) => setClients(data || []))
+  }, [firmId])
 
   const loadTasks = useCallback(async () => {
+    if (!firmId) return
     setLoading(true)
     const { start, end } = getDateRange(viewMode, currentDate)
     const startStr = toISODate(start)
@@ -104,6 +106,7 @@ export default function TasksView() {
     const { data } = await supabase
       .from('tasks')
       .select('*, clients(name)')
+      .eq('firm_id', firmId)
       .gte('due_date_iso', startStr)
       .lte('due_date_iso', endStr)
       .order('due_date_iso', { ascending: true })
@@ -114,7 +117,7 @@ export default function TasksView() {
 
     setTasks(data || [])
     setLoading(false)
-  }, [viewMode, currentDate])
+  }, [viewMode, currentDate, firmId])
 
   useEffect(() => { loadTasks() }, [loadTasks])
 
@@ -138,7 +141,7 @@ export default function TasksView() {
   }
 
   async function handleAddTask() {
-    if (!newTask.title.trim()) return
+    if (!newTask.title.trim() || !firmId) return
     setSaving(true)
     const insert: any = {
       title: newTask.title.trim(),
@@ -149,6 +152,7 @@ export default function TasksView() {
         : null,
       priority: newTask.priority,
       completed: false,
+      firm_id: firmId,
     }
     if (newTask.client_id) insert.client_id = newTask.client_id
     const { error } = await supabase.from('tasks').insert(insert)

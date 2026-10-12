@@ -1,11 +1,13 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import DocumentModal from './DocumentModal'
 import CalendarView from './CalendarView'
 import TasksView from './TasksView'
 
 export default function LawOfficeDashboard() {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [clientFilter, setClientFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -14,25 +16,50 @@ export default function LawOfficeDashboard() {
   const [clients, setClients] = useState<any[]>([])
   const [generalTasks, setGeneralTasks] = useState<any[]>([])
   const [todayMeetings, setTodayMeetings] = useState<any[]>([])
+  const [firmId, setFirmId] = useState<string | null>(null)
+  const [firmName, setFirmName] = useState('')
+
+  // Auth check — get user session and firm_id
+  useEffect(() => {
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('firm_id, role, firms(name)')
+        .eq('id', session.user.id)
+        .single()
+
+      if (!profile?.firm_id) { router.push('/login'); return }
+      if (profile.role === 'admin') { router.push('/admin'); return }
+
+      setFirmId(profile.firm_id)
+      setFirmName((profile.firms as any)?.name || '')
+    }
+    checkAuth()
+  }, [router])
 
   useEffect(() => {
+    if (!firmId) return
     const t = new Date()
     const dateStr = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
-    supabase.from('meetings').select('*').eq('date', dateStr).order('time', { ascending: true })
+    supabase.from('meetings').select('*').eq('firm_id', firmId).eq('date', dateStr).order('time', { ascending: true })
       .then(({ data }) => setTodayMeetings(data || []))
 
     const channel = supabase.channel('meetings-today')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, () => {
-        supabase.from('meetings').select('*').eq('date', dateStr).order('time', { ascending: true })
+        supabase.from('meetings').select('*').eq('firm_id', firmId).eq('date', dateStr).order('time', { ascending: true })
           .then(({ data }) => setTodayMeetings(data || []))
       }).subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [firmId])
   const [showAddClient, setShowAddClient] = useState(false)
   const [dbLoading, setDbLoading] = useState(true)
 
   const loadClients = useCallback(async () => {
-    const { data: clientsData } = await supabase.from('clients').select('*').order('created_at', { ascending: false })
+    if (!firmId) return
+    const { data: clientsData } = await supabase.from('clients').select('*').eq('firm_id', firmId).order('created_at', { ascending: false })
     if (!clientsData) return
 
     const enriched = await Promise.all(clientsData.map(async (c) => {
@@ -59,7 +86,7 @@ export default function LawOfficeDashboard() {
     }))
 
     // Load general tasks (not linked to any client)
-    const { data: genTasks } = await supabase.from('tasks').select('*').is('client_id', null).order('due_date_iso', { ascending: true })
+    const { data: genTasks } = await supabase.from('tasks').select('*').eq('firm_id', firmId).is('client_id', null).order('due_date_iso', { ascending: true })
     setGeneralTasks((genTasks || []).map(t => ({ id: t.id, title: t.title, dueDate: t.due_date, dueDateIso: t.due_date_iso, completed: t.completed, description: t.description, priority: t.priority || 'normal' })))
 
     setClients(enriched)
@@ -67,9 +94,9 @@ export default function LawOfficeDashboard() {
   }, [])
 
   useEffect(() => {
+    if (!firmId) return
     loadClients()
 
-    // האזנה לשינויים בזמן אמת — כשלקוח חדש ממלא את הטופס
     const channel = supabase
       .channel('clients-changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'clients' }, () => {
@@ -78,7 +105,7 @@ export default function LawOfficeDashboard() {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [loadClients])
+  }, [loadClients, firmId])
   const emptyForm = { name: '', phone: '', email: '', idNumber: '', address: '', field: '', status: 'active', summary: '', criticalDates: '', feeModel: '', totalFee: '', paidSoFar: '₪0', balanceDue: '' }
   const [form, setForm] = useState(emptyForm)
 
@@ -127,6 +154,7 @@ export default function LawOfficeDashboard() {
         file_type: file.name.split('.').pop()?.toUpperCase() || 'קובץ',
         uploaded_at: new Date().toLocaleDateString('he-IL'),
         category: uploadCategory,
+        firm_id: firmId,
       })
       setUploadLabel('')
       await refreshSelectedClient(selectedClient.id)
@@ -188,6 +216,7 @@ export default function LawOfficeDashboard() {
       client_id: selectedClient.id,
       author: 'עו"ד',
       text: newNoteText.trim(),
+      firm_id: firmId,
     })
     if (!error) {
       setNewNoteText('')
@@ -226,7 +255,7 @@ export default function LawOfficeDashboard() {
   const [savingTask, setSavingTask] = useState(false)
 
   async function handleAddClientTask() {
-    if (!newClientTask.title.trim() || !selectedClient) return
+    if (!newClientTask.title.trim() || !selectedClient || !firmId) return
     setSavingTask(true)
     const { error } = await supabase.from('tasks').insert({
       client_id: selectedClient.id,
@@ -238,6 +267,7 @@ export default function LawOfficeDashboard() {
         : null,
       priority: newClientTask.priority,
       completed: false,
+      firm_id: firmId,
     })
     if (!error) {
       setNewClientTask({ title: '', due_date_iso: '', description: '', priority: 'normal' })
@@ -305,7 +335,7 @@ export default function LawOfficeDashboard() {
   }
 
   async function handleAddClient() {
-    if (!form.name || !form.phone) return
+    if (!form.name || !form.phone || !firmId) return
     const { error } = await supabase.from('clients').insert({
       name: form.name,
       phone: form.phone,
@@ -320,7 +350,8 @@ export default function LawOfficeDashboard() {
       total_fee: form.totalFee,
       paid_so_far: form.paidSoFar || '₪0',
       balance_due: form.totalFee || '₪0',
-      source: 'manual'
+      source: 'manual',
+      firm_id: firmId,
     })
     if (!error) {
       await loadClients()
@@ -400,14 +431,22 @@ export default function LawOfficeDashboard() {
           </nav>
         </div>
 
-        <div className="p-4 border-t border-slate-800 flex items-center gap-3 bg-slate-950/40">
-          <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shadow text-sm">
-            עד
+        <div className="p-4 border-t border-slate-800 bg-slate-950/40">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shadow text-sm shrink-0">
+              {firmName ? firmName.charAt(0) : 'מ'}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white truncate">{firmName || 'משרד עורכי דין'}</p>
+              <p className="text-xs text-slate-400">מנהל ראשי</p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-bold text-white">משרד עורכי דין</p>
-            <p className="text-xs text-slate-400">מנהל ראשי</p>
-          </div>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
+            className="w-full text-right px-3 py-2 rounded-xl text-xs text-slate-400 hover:bg-slate-800 hover:text-white transition"
+          >
+            יציאה מהמערכת ←
+          </button>
         </div>
       </aside>
 
@@ -1326,7 +1365,7 @@ export default function LawOfficeDashboard() {
         )}
 
         {activeTab === 'tasks' && (
-          <TasksView />
+          <TasksView firmId={firmId} />
         )}
 
         {activeTab === 'finances' && (
