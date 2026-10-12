@@ -60,7 +60,7 @@ export default function LawOfficeDashboard() {
   const loadClients = useCallback(async () => {
     if (!firmId) return
     const { data: clientsData } = await supabase.from('clients').select('*').eq('firm_id', firmId).order('created_at', { ascending: false })
-    if (!clientsData) return
+    if (!clientsData) { setDbLoading(false); return }
 
     const enriched = await Promise.all(clientsData.map(async (c) => {
       const { data: docs } = await supabase.from('documents').select('*').eq('client_id', c.id)
