@@ -31,6 +31,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Link href="/dashboard/clients" className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm">
             <span>👤</span> לקוחות
           </Link>
+          <Link href="/dashboard/calendar" className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm">
+            <span>📅</span> יומן
+          </Link>
           <Link href="/dashboard/tasks" className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm">
             <span>✓</span> משימות
           </Link>
