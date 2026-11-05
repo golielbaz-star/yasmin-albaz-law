@@ -16,10 +16,11 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const snap = await db.collection('meetings')
     .where('clientId', '==', clientId)
     .where('officeId', '==', officeId)
-    .orderBy('date', 'desc')
     .get()
 
-  const meetings = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))
+  const meetings = snap.docs
+    .map((d: any) => ({ id: d.id, ...d.data() }))
+    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
   return NextResponse.json({ meetings })
 }
 

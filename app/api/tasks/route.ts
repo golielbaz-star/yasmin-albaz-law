@@ -13,11 +13,12 @@ export async function GET() {
 
   const snap = await db.collection('tasks')
     .where('officeId', '==', officeId)
-    .orderBy('createdAt', 'asc')
     .get()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tasks = snap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }))
+  const tasks = snap.docs
+    .map((doc: any) => ({ id: doc.id, ...doc.data() }))
+    .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
   return NextResponse.json({ tasks })
 }
 

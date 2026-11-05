@@ -16,10 +16,11 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const snap = await db.collection('clientForms')
     .where('clientId', '==', clientId)
     .where('officeId', '==', officeId)
-    .orderBy('createdAt', 'desc')
     .get()
 
-  const forms = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))
+  const forms = snap.docs
+    .map((d: any) => ({ id: d.id, ...d.data() }))
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   return NextResponse.json({ forms })
 }
 

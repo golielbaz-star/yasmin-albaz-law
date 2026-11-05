@@ -14,11 +14,10 @@ export async function GET() {
 
   const snap = await db.collection('agents')
     .where('officeId', '==', officeId)
-    .orderBy('createdAt', 'desc')
     .get()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const agents = snap.docs.map((doc: any) => {
+  const agents = snap.docs.sort((a: any, b: any) => new Date(b.data().createdAt).getTime() - new Date(a.data().createdAt).getTime()).map((doc: any) => {
     const { password, ...data } = doc.data()
     return { id: doc.id, ...data }
   })

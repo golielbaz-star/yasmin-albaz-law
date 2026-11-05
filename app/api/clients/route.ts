@@ -13,14 +13,11 @@ export async function GET() {
 
   const snap = await db.collection('clients')
     .where('officeId', '==', officeId)
-    .orderBy('createdAt', 'desc')
     .get()
 
-  const clients = snap.docs.map((d: any) => ({
-    id: d.id,
-    ...d.data(),
-    status: d.data().status || 'active',
-  }))
+  const clients = snap.docs
+    .map((d: any) => ({ id: d.id, ...d.data(), status: d.data().status || 'active' }))
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
   return NextResponse.json({ clients })
 }

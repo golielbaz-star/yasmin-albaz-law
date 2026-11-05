@@ -13,11 +13,11 @@ export async function GET() {
 
   const casesSnap = await db.collection('cases')
     .where('officeId', '==', officeId)
-    .orderBy('createdAt', 'desc')
     .get()
 
+  const sortedDocs = casesSnap.docs.sort((a: any, b: any) => new Date(b.data().createdAt).getTime() - new Date(a.data().createdAt).getTime())
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cases = await Promise.all(casesSnap.docs.map(async (doc: any) => {
+  const cases = await Promise.all(sortedDocs.map(async (doc: any) => {
     const data = doc.data()
 
     let client = null
