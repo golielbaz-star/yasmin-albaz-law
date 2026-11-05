@@ -1,37 +1,48 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/firebase-admin'
 import { cookies } from 'next/headers'
 
-export async function GET() {
+async function getOfficeId() {
   const cookieStore = await cookies()
-  const officeId = cookieStore.get('officeId')?.value
+  return cookieStore.get('officeId')?.value
+}
+
+export async function GET() {
+  const officeId = await getOfficeId()
   if (!officeId) return NextResponse.json({ error: 'לא מחובר' }, { status: 401 })
 
-  const casesSnap = await db.collection('cases')
+  const snap = await db.collection('clients')
     .where('officeId', '==', officeId)
     .orderBy('createdAt', 'desc')
     .get()
 
-  const clientIds = [...new Set(casesSnap.docs.map((d: any) => d.data().clientId).filter(Boolean))]
-
-  const clients = await Promise.all(clientIds.map(async (clientId: string) => {
-    const clientDoc = await db.collection('clients').doc(clientId).get()
-    if (!clientDoc.exists) return null
-    const clientData = clientDoc.data()!
-
-    const clientCases = casesSnap.docs
-      .filter((d: any) => d.data().clientId === clientId)
-      .map((d: any) => ({ id: d.id, ...d.data() }))
-
-    const isArchived = clientCases.every((c: any) => c.status === 'done')
-
-    return {
-      id: clientId,
-      ...clientData,
-      cases: clientCases,
-      archived: isArchived,
-    }
+  const clients = snap.docs.map((d: any) => ({
+    id: d.id,
+    ...d.data(),
+    status: d.data().status || 'active',
   }))
 
-  return NextResponse.json({ clients: clients.filter(Boolean) })
+  return NextResponse.json({ clients })
+}
+
+export async function POST(req: NextRequest) {
+  const officeId = await getOfficeId()
+  if (!officeId) return NextResponse.json({ error: 'לא מחובר' }, { status: 401 })
+
+  const { name, phone, email, notes, status } = await req.json()
+
+  if (!name) return NextResponse.json({ error: 'שם חובה' }, { status: 400 })
+
+  const docRef = await db.collection('clients').add({
+    officeId,
+    name,
+    phone: phone || '',
+    email: email || '',
+    notes: notes || '',
+    status: status || 'active',
+    createdAt: new Date().toISOString(),
+  })
+
+  const doc = await docRef.get()
+  return NextResponse.json({ client: { id: docRef.id, ...doc.data() } })
 }
