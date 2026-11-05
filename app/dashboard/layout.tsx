@@ -28,9 +28,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Link href="/dashboard" className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm">
             <span>📊</span> לוח בקרה
           </Link>
-          <Link href="/dashboard/cases" className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm">
-            <span>📁</span> תיקים
-          </Link>
           <Link href="/dashboard/clients" className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm">
             <span>👤</span> לקוחות
           </Link>
@@ -38,7 +35,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <span>✓</span> משימות
           </Link>
           <Link href="/dashboard/agents" className="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm">
-            <span>🏢</span> נציגי ביטוח
+            <span>👥</span> צוות
           </Link>
         </nav>
 

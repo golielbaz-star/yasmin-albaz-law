@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
-import { getStatus } from '@/lib/statuses'
+import { CASE_STATUSES, getStatus } from '@/lib/statuses'
 
 type Meeting = {
   id: string
@@ -19,12 +19,23 @@ type Form = {
   createdAt: string
 }
 
+type Case = {
+  id: string
+  title: string
+  status: string
+  notes: string
+  createdAt: string
+}
+
 type ClientData = {
   id: string
   name: string
   phone: string
   email: string
-  cases: { id: string; title: string; status: string; insuranceCompany: string; clientPhone: string; notes: string }[]
+  address?: string
+  idNumber?: string
+  status: string
+  notes?: string
 }
 
 type Task = {
@@ -32,7 +43,6 @@ type Task = {
   title: string
   status: string
   dueDate: string | null
-  caseTitle: string | null
 }
 
 const FORM_TYPES = ['הסכם שכר טירחה', 'ייפוי כוח', 'אישור', 'חוזה', 'אחר']
@@ -40,11 +50,12 @@ const FORM_TYPES = ['הסכם שכר טירחה', 'ייפוי כוח', 'אישו
 export default function ClientPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = use(params)
   const router = useRouter()
-  const [tab, setTab] = useState<'details' | 'meetings' | 'tasks' | 'forms'>('details')
+  const [tab, setTab] = useState<'details' | 'cases' | 'meetings' | 'tasks' | 'forms'>('details')
   const [client, setClient] = useState<ClientData | null>(null)
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [forms, setForms] = useState<Form[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [cases, setCases] = useState<Case[]>([])
   const [loading, setLoading] = useState(true)
 
   // פגישה חדשה
@@ -58,17 +69,23 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
   const [formType, setFormType] = useState('הסכם שכר טירחה')
   const [uploadingForm, setUploadingForm] = useState(false)
 
+  // תיק חדש
+  const [showCaseForm, setShowCaseForm] = useState(false)
+  const [caseForm, setCaseForm] = useState({ title: '', notes: '' })
+  const [savingCase, setSavingCase] = useState(false)
+
   useEffect(() => {
     loadAll()
   }, [clientId])
 
   async function loadAll() {
     setLoading(true)
-    const [clientsRes, meetingsRes, formsRes, tasksRes] = await Promise.all([
+    const [clientsRes, meetingsRes, formsRes, tasksRes, casesRes] = await Promise.all([
       fetch('/api/clients'),
       fetch(`/api/clients/${clientId}/meetings`),
       fetch(`/api/clients/${clientId}/forms`),
       fetch('/api/tasks'),
+      fetch(`/api/clients/${clientId}/cases`),
     ])
 
     const clientsData = await clientsRes.json()
@@ -82,11 +99,11 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
     setForms(formsData.forms || [])
 
     const tasksData = await tasksRes.json()
-    const caseId = found?.cases?.[0]?.id
-    const clientTasks = (tasksData.tasks || []).filter((t: Task) =>
-      found?.cases?.some((c: any) => c.id === t.caseTitle || t.caseTitle === found?.cases?.[0]?.title)
-    )
     setTasks(tasksData.tasks || [])
+
+    const casesData = await casesRes.json()
+    setCases(casesData.cases || [])
+
     setLoading(false)
   }
 
@@ -134,17 +151,46 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
     setForms(prev => prev.filter(f => f.id !== formId))
   }
 
+  async function addCase(e: React.FormEvent) {
+    e.preventDefault()
+    setSavingCase(true)
+    await fetch(`/api/clients/${clientId}/cases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(caseForm),
+    })
+    setCaseForm({ title: '', notes: '' })
+    setShowCaseForm(false)
+    setSavingCase(false)
+    const res = await fetch(`/api/clients/${clientId}/cases`)
+    const data = await res.json()
+    setCases(data.cases || [])
+  }
+
+  async function updateCaseStatus(caseId: string, status: string) {
+    await fetch(`/api/clients/${clientId}/cases`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId, status }),
+    })
+    setCases(prev => prev.map(c => c.id === caseId ? { ...c, status } : c))
+  }
+
+  async function deleteCase(caseId: string) {
+    if (!confirm('למחוק תיק זה?')) return
+    await fetch(`/api/clients/${clientId}/cases?caseId=${caseId}`, { method: 'DELETE' })
+    setCases(prev => prev.filter(c => c.id !== caseId))
+  }
+
   if (loading) return <div dir="rtl" className="p-8 text-gray-400">טוען...</div>
   if (!client) return <div dir="rtl" className="p-8 text-gray-400">לקוח לא נמצא</div>
 
-  const mainCase = client.cases?.[0]
-  const status = mainCase ? getStatus(mainCase.status) : null
-
   const tabs = [
     { id: 'details', label: 'פרטי לקוח', icon: '👤' },
-    { id: 'meetings', label: 'ריכוז פגישות', icon: '📅' },
+    { id: 'cases', label: `תיקים (${cases.length})`, icon: '📁' },
+    { id: 'meetings', label: 'פגישות', icon: '📅' },
     { id: 'tasks', label: 'משימות', icon: '✓' },
-    { id: 'forms', label: 'טפסים', icon: '📄' },
+    { id: 'forms', label: 'מסמכים', icon: '📄' },
   ] as const
 
   return (
@@ -166,20 +212,22 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
                 {client.email && <span>✉️ {client.email}</span>}
               </div>
             </div>
-            {status && (
-              <span className={`mr-auto px-3 py-1 rounded-full text-xs font-medium ${status.color}`}>
-                {status.label}
-              </span>
-            )}
+            <div className="mr-auto flex items-center gap-2">
+              {cases.length > 0 && (
+                <span className="bg-blue-100 text-blue-700 text-xs px-3 py-1 rounded-full font-medium">
+                  {cases.length} תיקים
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 mt-4">
+          <div className="flex gap-1 mt-4 overflow-x-auto">
             {tabs.map(t => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${tab === t.id ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${tab === t.id ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-100'}`}
               >
                 <span>{t.icon}</span> {t.label}
               </button>
@@ -193,56 +241,122 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
 
         {/* פרטי לקוח */}
         {tab === 'details' && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-xl border shadow-sm p-6 space-y-4">
-              <h2 className="font-semibold text-gray-800 text-lg">פרטים אישיים</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">שם מלא</p>
-                  <p className="font-medium text-gray-900">{client.name || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">טלפון</p>
-                  <p className="font-medium text-gray-900">{client.phone || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">אימייל</p>
-                  <p className="font-medium text-gray-900">{client.email || '—'}</p>
-                </div>
+          <div className="bg-white rounded-xl border shadow-sm p-6 space-y-4">
+            <h2 className="font-semibold text-gray-800 text-lg">פרטים אישיים</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-400 mb-1">שם מלא</p>
+                <p className="font-medium text-gray-900">{client.name || '—'}</p>
               </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-1">טלפון</p>
+                <p className="font-medium text-gray-900">{client.phone || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-1">אימייל</p>
+                <p className="font-medium text-gray-900">{client.email || '—'}</p>
+              </div>
+              {client.idNumber && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">ת.ז.</p>
+                  <p className="font-medium text-gray-900">{client.idNumber}</p>
+                </div>
+              )}
+              {client.address && (
+                <div className="md:col-span-2">
+                  <p className="text-xs text-gray-400 mb-1">כתובת</p>
+                  <p className="font-medium text-gray-900">{client.address}</p>
+                </div>
+              )}
+              {client.notes && (
+                <div className="md:col-span-2">
+                  <p className="text-xs text-gray-400 mb-1">הערות</p>
+                  <p className="font-medium text-gray-900 whitespace-pre-wrap">{client.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* תיקים */}
+        {tab === 'cases' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="font-semibold text-gray-800">תיקים ({cases.length})</h2>
+              <button
+                onClick={() => setShowCaseForm(true)}
+                className="bg-black text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-800"
+              >
+                + תיק חדש
+              </button>
             </div>
 
-            {client.cases.map(c => {
-              const s = getStatus(c.status)
-              return (
-                <div key={c.id} className="bg-white rounded-xl border shadow-sm p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-semibold text-gray-800 text-lg">פרטי התיק</h2>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${s.color}`}>{s.label}</span>
+            {showCaseForm && (
+              <div className="bg-white rounded-xl border shadow-sm p-5">
+                <form onSubmit={addCase} className="space-y-3">
+                  <input
+                    required
+                    value={caseForm.title}
+                    onChange={e => setCaseForm({ ...caseForm, title: e.target.value })}
+                    placeholder="נושא התיק *"
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black"
+                  />
+                  <textarea
+                    value={caseForm.notes}
+                    onChange={e => setCaseForm({ ...caseForm, notes: e.target.value })}
+                    placeholder="הערות..."
+                    rows={3}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black resize-none"
+                  />
+                  <div className="flex gap-3">
+                    <button type="submit" disabled={savingCase}
+                      className="bg-black text-white px-5 py-2 rounded-xl text-sm hover:bg-gray-800 disabled:opacity-50">
+                      {savingCase ? 'שומר...' : 'צור תיק'}
+                    </button>
+                    <button type="button" onClick={() => setShowCaseForm(false)}
+                      className="border border-gray-200 px-5 py-2 rounded-xl text-sm hover:bg-gray-50">
+                      ביטול
+                    </button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1">שם התיק</p>
-                      <p className="font-medium text-gray-900">{c.title || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1">חברת ביטוח</p>
-                      <p className="font-medium text-gray-900">{c.insuranceCompany || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1">טלפון</p>
-                      <p className="font-medium text-gray-900">{c.clientPhone || '—'}</p>
-                    </div>
-                    {c.notes && (
-                      <div className="md:col-span-2">
-                        <p className="text-xs text-gray-400 mb-1">הערות</p>
-                        <p className="font-medium text-gray-900">{c.notes}</p>
+                </form>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {cases.map(c => {
+                const s = getStatus(c.status)
+                return (
+                  <div key={c.id} className="bg-white rounded-xl border shadow-sm p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 space-y-2">
+                        <h3 className="font-semibold text-gray-900">{c.title}</h3>
+                        {c.notes && <p className="text-sm text-gray-500">{c.notes}</p>}
+                        <p className="text-xs text-gray-400">
+                          {new Date(c.createdAt).toLocaleDateString('he-IL')}
+                        </p>
                       </div>
-                    )}
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={c.status}
+                          onChange={e => updateCaseStatus(c.id, e.target.value)}
+                          className={`border rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-black ${s.color}`}
+                        >
+                          {CASE_STATUSES.map(st => (
+                            <option key={st.id} value={st.id}>{st.label}</option>
+                          ))}
+                        </select>
+                        <button onClick={() => deleteCase(c.id)} className="text-gray-300 hover:text-red-500 text-xs">
+                          מחק
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+              {cases.length === 0 && !showCaseForm && (
+                <div className="text-center py-12 text-gray-400">אין תיקים ללקוח זה עדיין</div>
+              )}
+            </div>
           </div>
         )}
 
@@ -321,7 +435,7 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
         {/* משימות */}
         {tab === 'tasks' && (
           <div className="space-y-3">
-            <h2 className="font-semibold text-gray-800">משימות</h2>
+            <h2 className="font-semibold text-gray-800">משימות פתוחות</h2>
             {tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').map(t => (
               <div key={t.id} className="bg-white rounded-xl border shadow-sm p-4 flex items-center gap-3">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${t.status === 'due' ? 'bg-red-500' : 'bg-blue-500'}`} />
@@ -341,16 +455,16 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
           </div>
         )}
 
-        {/* טפסים */}
+        {/* מסמכים */}
         {tab === 'forms' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="font-semibold text-gray-800">טפסים ({forms.length})</h2>
+              <h2 className="font-semibold text-gray-800">מסמכים ({forms.length})</h2>
               <button
                 onClick={() => setShowFormUpload(true)}
                 className="bg-black text-white px-4 py-2 rounded-xl text-sm hover:bg-gray-800"
               >
-                + העלאת טופס
+                + העלאת מסמך
               </button>
             </div>
 
@@ -408,7 +522,7 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
                 </div>
               ))}
               {forms.length === 0 && !showFormUpload && (
-                <div className="text-center py-12 text-gray-400">אין טפסים עדיין</div>
+                <div className="text-center py-12 text-gray-400">אין מסמכים עדיין</div>
               )}
             </div>
           </div>
