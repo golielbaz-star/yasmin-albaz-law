@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getStatus } from '@/lib/statuses'
+import FloatingActions from '@/components/FloatingActions'
 
 type Client = {
   id: string
@@ -20,11 +21,13 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  useEffect(() => {
+  function loadClients() {
     fetch('/api/clients')
       .then(r => r.json())
       .then(d => { setClients(d.clients || []); setLoading(false) })
-  }, [])
+  }
+
+  useEffect(() => { loadClients() }, [])
 
   const filtered = clients
     .filter(c => filter === 'active' ? !c.archived : c.archived)
@@ -127,6 +130,8 @@ export default function ClientsPage() {
           </div>
         )}
       </div>
+
+      <FloatingActions onCreated={loadClients} />
     </div>
   )
 }

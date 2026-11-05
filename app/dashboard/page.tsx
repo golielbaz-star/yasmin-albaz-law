@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { CASE_STATUSES } from '@/lib/statuses'
+import FloatingActions from '@/components/FloatingActions'
 
 type Case = {
   id: string
@@ -188,6 +189,8 @@ export default function DashboardPage() {
       >
         צפייה בכל התיקים ←
       </Link>
+
+      <FloatingActions onCreated={() => window.location.reload()} />
     </div>
   )
 }
